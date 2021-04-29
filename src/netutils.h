@@ -77,6 +77,8 @@ static const char mptcp_enabled_values[] = { MPTCP_ENABLED, 0 };
 #define INET6_SIZE 16
 
 size_t get_sockaddr_len(struct sockaddr *addr);
+char *get_sockaddr_str(struct sockaddr *addr);
+
 ssize_t get_sockaddr(char *host, char *port,
                      struct sockaddr_storage *storage, int block,
                      int ipv6first);

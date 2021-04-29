@@ -103,6 +103,9 @@ extern int is_bind_local_addr;
 extern struct sockaddr_storage local_addr_v4;
 extern struct sockaddr_storage local_addr_v6;
 #endif
+#ifdef MODULE_REDIR
+extern int fwmark;
+#endif
 
 static int packet_size                               = DEFAULT_PACKET_SIZE;
 static int buf_size                                  = DEFAULT_PACKET_SIZE * 2;
@@ -856,6 +859,11 @@ remote_recv_cb(EV_P_ ev_io *w, int revents)
         ERROR("[udp] remote_recv_socket");
         goto CLEAN_UP;
     }
+    if (reuse_port) {
+        if (set_reuseport(src_fd) != 0) {
+            ERROR("[udp] remote_recv port_reuse");
+        }
+    }
     int opt  = 1;
     int sol  = remote_ctx->src_addr.ss_family == AF_INET6 ? SOL_IPV6 : SOL_IP;
     int flag = remote_ctx->src_addr.ss_family == AF_INET6 ? IPV6_TRANSPARENT : IP_TRANSPARENT;
@@ -868,11 +876,6 @@ remote_recv_cb(EV_P_ ev_io *w, int revents)
         ERROR("[udp] remote_recv_setsockopt");
         close(src_fd);
         goto CLEAN_UP;
-    }
-    if (reuse_port) {
-        if (set_reuseport(src_fd) != 0) {
-            ERROR("[udp] remote_recv port_reuse");
-        }
     }
 #ifdef IP_TOS
     // Set QoS flag
@@ -898,6 +901,9 @@ remote_recv_cb(EV_P_ ev_io *w, int revents)
                    (struct sockaddr *)&remote_ctx->src_addr, remote_src_addr_len);
     if (s == -1 && !(errno == EAGAIN || errno == EWOULDBLOCK)) {
         ERROR("[udp] remote_recv_sendto");
+        char *addr_str =
+            get_sockaddr_str((struct sockaddr *)&remote_ctx->src_addr);
+        LOGE("[udp] remote_recv_sendto %s", addr_str != NULL ? addr_str : "?");
         close(src_fd);
         goto CLEAN_UP;
     }
@@ -909,6 +915,9 @@ remote_recv_cb(EV_P_ ev_io *w, int revents)
                    (struct sockaddr *)&remote_ctx->src_addr, remote_src_addr_len);
     if (s == -1 && !(errno == EAGAIN || errno == EWOULDBLOCK)) {
         ERROR("[udp] remote_recv_sendto");
+        char *addr_str =
+            get_sockaddr_str((struct sockaddr *)&remote_ctx->src_addr);
+        LOGE("[udp] remote_recv_sendto %s", addr_str != NULL ? addr_str : "?");
         goto CLEAN_UP;
     }
 
@@ -1214,6 +1223,16 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
         }
         setnonblocking(remotefd);
 
+#ifdef MODULE_REDIR
+        if (fwmark >= 0) {
+            if (setsockopt(remotefd, SOL_SOCKET,
+                        SO_MARK, &fwmark, sizeof(fwmark)) != 0)
+            {
+                ERROR("setsockopt");
+            }
+        }
+#endif
+
 #ifdef SO_NOSIGPIPE
         set_nosigpipe(remotefd);
 #endif
@@ -1414,6 +1433,11 @@ init_udprelay(const char *server_host, const char *server_port,
     s_port = server_port;
     // Initialize ev loop
     struct ev_loop *loop = EV_DEFAULT;
+
+#ifdef MODULE_REDIR
+    if (fwmark >= 0)
+        LOGI("[udp] set fwmark to %d", fwmark);
+#endif
 
     // Initialize MTU
     if (mtu > 0) {

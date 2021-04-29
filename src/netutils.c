@@ -71,6 +71,35 @@ get_sockaddr_len(struct sockaddr *addr)
     return 0;
 }
 
+char *
+get_sockaddr_str(struct sockaddr *addr)
+{
+    char *ret = NULL;
+
+    switch (addr->sa_family) {
+        case AF_INET: {
+            struct sockaddr_in *s = (struct sockaddr_in *)&addr;
+            ret = ss_malloc(INET_ADDRSTRLEN);
+            if (inet_ntop(AF_INET, &s->sin_addr, ret, INET_ADDRSTRLEN) == 0) {
+                ss_free(ret);
+                return NULL;
+            }
+        } break;
+        case AF_INET6: {
+            struct sockaddr_in6 *s = (struct sockaddr_in6 *)&addr;
+            ret = ss_malloc(INET6_ADDRSTRLEN);
+            if (inet_ntop(AF_INET6, &s->sin6_addr, ret, INET6_ADDRSTRLEN) == 0) {
+                ss_free(ret);
+                return NULL;
+            }
+        } break;
+        default:
+            break;
+    }
+
+    return ret;
+}
+
 #ifdef SET_INTERFACE
 int
 setinterface(int socket_fd, const char *interface_name)

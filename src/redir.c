@@ -73,6 +73,10 @@
 #define IPV6_TRANSPARENT     75
 #endif
 
+#ifndef SO_MARK
+#define SO_MARK 36
+#endif
+
 static void accept_cb(EV_P_ ev_io *w, int revents);
 static void server_recv_cb(EV_P_ ev_io *w, int revents);
 static void server_send_cb(EV_P_ ev_io *w, int revents);
@@ -110,6 +114,8 @@ static struct ev_signal sigterm_watcher;
 static struct ev_signal sigchld_watcher;
 
 static int tcp_tproxy = 0; /* use tproxy instead of redirect (for tcp) */
+
+int fwmark = -1;
 
 static int
 getdestaddr(int fd, struct sockaddr_storage *destaddr)
@@ -782,6 +788,14 @@ accept_cb(EV_P_ ev_io *w, int revents)
     setsockopt(remotefd, SOL_SOCKET, SO_NOSIGPIPE, &opt, sizeof(opt));
 #endif
 
+    if (fwmark >= 0) {
+        if (setsockopt(remotefd, SOL_SOCKET,
+                       SO_MARK, &fwmark, sizeof(fwmark)) != 0)
+        {
+            ERROR("setsockopt");
+        }
+    }
+
     // Enable TCP keepalive feature
     int keepAlive    = 1;
     int keepIdle     = 40;
@@ -929,6 +943,7 @@ main(int argc, char **argv)
         { "tcp-incoming-rcvbuf", required_argument, NULL, GETOPT_VAL_TCP_INCOMING_RCVBUF },
         { "tcp-outgoing-sndbuf", required_argument, NULL, GETOPT_VAL_TCP_OUTGOING_SNDBUF },
         { "tcp-outgoing-rcvbuf", required_argument, NULL, GETOPT_VAL_TCP_OUTGOING_RCVBUF },
+        { "fwmark", required_argument, NULL, GETOPT_VAL_FWMARK },
         { "no-delay",    no_argument,       NULL, GETOPT_VAL_NODELAY     },
         { "password",    required_argument, NULL, GETOPT_VAL_PASSWORD    },
         { "key",         required_argument, NULL, GETOPT_VAL_KEY         },
@@ -945,6 +960,10 @@ main(int argc, char **argv)
         switch (c) {
         case GETOPT_VAL_FAST_OPEN:
             fast_open = 1;
+            break;
+        case GETOPT_VAL_FWMARK:
+            fwmark = atoi(optarg);
+            LOGI("set fwmark to %d", fwmark);
             break;
         case GETOPT_VAL_MTU:
             mtu = atoi(optarg);
